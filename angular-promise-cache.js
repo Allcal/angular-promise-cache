@@ -26,7 +26,7 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
   'use strict';
 
-  angular.module('angular-promise-cache', [])
+  angular.module('angular-promise-cache', ['LocalForageModule'])
     .factory('promiseCache', ['$q', '$rootScope', '$localForage', function($q, $rootScope, $localForage) {
 
       var localForgeInstance = $localforage.createInstance({
