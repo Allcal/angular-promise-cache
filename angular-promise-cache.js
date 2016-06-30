@@ -27,17 +27,24 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
   'use strict';
 
   angular.module('angular-promise-cache', [])
-    .factory('promiseCache', ['$q', '$rootScope', function($q, $rootScope) {
+    .factory('promiseCache', ['$q', '$rootScope', '$localForage', function($q, $rootScope, $localForage) {
+
+      var localForgeInstance = $localforage.createInstance({
+        name: 'angular-promise-db'
+      });
+
+      var dummyLocalStorage = {
+        setItem: function() { },
+        removeItem: function() { },
+        getItem: function() { }
+      };
+
       var memos = {},
         DEFAULT_TTL_IN_MS = 5000,
         keyDelimiter = '$',
         whitespaceRegex = /\s+/g,
         dateReferences = {},
-        ls = window.localStorage || {
-          setItem: function() { },
-          removeItem: function() { },
-          getItem: function() { }
-        },
+        ls = localForgeInstance || dummyLocalStorage,
         hasOwnProperty = Object.prototype.hasOwnProperty,
         toString = Object.prototype.toString,
         store = function(key, complexValue) {
@@ -47,14 +54,19 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
           ls.removeItem(key);
         },
         fetch = function(key) {
-          var str = ls.getItem(key);
-          try {
-            str = JSON.parse(str);
-          }
-          catch (e) {
-            console.warn('Unable to parse json response from local storage', str);
-          }
-          return str;
+          return ls.getItem(key)
+            .then(function(str) {
+              try {
+                return JSON.parse(str);
+              }
+              catch (e) {
+                console.warn('Unable to parse json response from local storage', str);
+                return null;
+              }
+            }, function() {
+              console.warn('some nasty error', arguments);
+              return null;
+            })
         },
 
         getTimestamp = function(key, strPromise) {
@@ -102,7 +114,8 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
           // v0.0.5: Local storage support
           lsEnabled = isLsEnabled(opts),
           lsKey = getLsKey(opts, strPromise),
-          lsObj = fetch(lsKey),
+          _lsObj = fetch(lsKey),
+          lsObj = null,
           lsTs,
           lsMemoCache,
           lsDuration,
@@ -110,99 +123,103 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
         dateReferences[strPromise] = dateReferences[strPromise] || now;
 
-        if (lsEnabled) {
-          if (!lsObj || typeof lsObj !== 'object' || !hasOwnProperty.call(lsObj, 'resolver') || !hasOwnProperty.call(lsObj, 'response')) {
-            lsObj = {};
+        return _lsObj.then(function(lsObj) {
+
+          if (lsEnabled) {
+            if (!lsObj || typeof lsObj !== 'object' || !hasOwnProperty.call(lsObj, 'resolver') || !hasOwnProperty.call(lsObj, 'response')) {
+              lsObj = {};
+            }
+            else {
+              // v0.0.5: Local Storage support
+
+              // Extract the timestamp from the local storage object
+              // This timestamp represents the last time this promise
+              // expired
+              lsTs = getTimestamp(lsObj.resolver, strPromise);
+
+              // Determine how much longer it has to live
+              lsDuration = lsTs + ttl - now;
+
+              // Memoize the promise using the timestamp from the
+              // local storage object rather than dateReference
+              memos[strPromise] = memoize(promise, function() {
+                return formatCacheKey(lsTs);
+              });
+
+              // We want to fill the cache immediately but do not
+              // want to execute the promise and since the cache
+              // property is just a simple key/value object, we
+              // can create that and set it without any harm
+              lsMemoCache = memos[strPromise].cache || {};
+              lsDeferred = $q.defer();
+              lsDeferred.resolve(lsObj.response);
+              lsMemoCache[formatCacheKey(lsTs)] = lsDeferred.promise;
+              memos[strPromise].cache = lsMemoCache;
+            }
+          }
+
+          if (!hasOwnProperty.call(memos, strPromise)) {
+            memos[strPromise] = memoize(promise, function() {
+              return formatCacheKey(dateReferences[strPromise]);
+            });
+            memos[strPromise].opts = opts;
+            $rootScope.$broadcast('angular-promise-cache.new', formatCacheKey(dateReferences[strPromise]), strPromise);
           }
           else {
-            // v0.0.5: Local Storage support
+            memos[strPromise].opts = opts;
+            memos[strPromise].cache = (function() {
+              var updatedCache = {},
+                cache = memos[strPromise].cache,
+                forceExpiration = !!memos[strPromise].forceExpiration,
+                key,
+                timestamp,
+                omit;
 
-            // Extract the timestamp from the local storage object
-            // This timestamp represents the last time this promise
-            // expired
-            lsTs = getTimestamp(lsObj.resolver, strPromise);
+              for (key in cache) {
+                timestamp = getTimestamp(key, strPromise);
+                // v0.0.7: TTL < 0 means it never expires
+                omit      = bustCache || forceExpiration || (ttl > 0 && timestamp + ttl < now);
 
-            // Determine how much longer it has to live
-            lsDuration = lsTs + ttl - now;
-
-            // Memoize the promise using the timestamp from the
-            // local storage object rather than dateReference
-            memos[strPromise] = memoize(promise, function() {
-              return formatCacheKey(lsTs);
-            });
-
-            // We want to fill the cache immediately but do not
-            // want to execute the promise and since the cache
-            // property is just a simple key/value object, we
-            // can create that and set it without any harm
-            lsMemoCache = memos[strPromise].cache || {};
-            lsDeferred = $q.defer();
-            lsDeferred.resolve(lsObj.response);
-            lsMemoCache[formatCacheKey(lsTs)] = lsDeferred.promise;
-            memos[strPromise].cache = lsMemoCache;
-          }
-        }
-
-        if (!hasOwnProperty.call(memos, strPromise)) {
-          memos[strPromise] = memoize(promise, function() {
-            return formatCacheKey(dateReferences[strPromise]);
-          });
-          memos[strPromise].opts = opts;
-          $rootScope.$broadcast('angular-promise-cache.new', formatCacheKey(dateReferences[strPromise]), strPromise);
-        }
-        else {
-          memos[strPromise].opts = opts;
-          memos[strPromise].cache = (function() {
-            var updatedCache = {},
-              cache = memos[strPromise].cache,
-              forceExpiration = !!memos[strPromise].forceExpiration,
-              key,
-              timestamp,
-              omit;
-
-            for (key in cache) {
-              timestamp = getTimestamp(key, strPromise);
-              // v0.0.7: TTL < 0 means it never expires
-              omit      = bustCache || forceExpiration || (ttl > 0 && timestamp + ttl < now);
-
-              if (omit) {
-                $rootScope.$broadcast('angular-promise-cache.expired', key, strPromise);
-                dateReferences[strPromise] = now;
-                if (lsEnabled) {
-                  lsTs = dateReferences[strPromise];
-                  remove(lsKey);
+                if (omit) {
+                  $rootScope.$broadcast('angular-promise-cache.expired', key, strPromise);
+                  dateReferences[strPromise] = now;
+                  if (lsEnabled) {
+                    lsTs = dateReferences[strPromise];
+                    remove(lsKey);
+                  }
+                }
+                else {
+                  $rootScope.$broadcast('angular-promise-cache.active', key, timestamp + ttl, strPromise);
+                  updatedCache[key] = cache[key];
                 }
               }
-              else {
-                $rootScope.$broadcast('angular-promise-cache.active', key, timestamp + ttl, strPromise);
-                updatedCache[key] = cache[key];
-              }
-            }
 
-            // Always reset this after expiring the cache
-            // so it is not "stuck on"
-            memos[strPromise].forceExpiration = false;
+              // Always reset this after expiring the cache
+              // so it is not "stuck on"
+              memos[strPromise].forceExpiration = false;
 
-            return updatedCache;
-          }());
-        }
-
-        return memos[strPromise].apply(this, args || []).then(
-          function(response) {
-            if (lsEnabled) {
-              lsObj.response = arguments[0];
-              lsObj.resolver = formatCacheKey(lsTs || dateReferences[strPromise]);
-              store(lsKey, lsObj);
-            }
-            return response;
-          },
-          function(error) {
-            if (angular.isFunction(expireOnFailure) && expireOnFailure.apply(this, arguments)) {
-              memos[strPromise].forceExpiration = true;
-            }
-            return $q.reject(error);
+              return updatedCache;
+            }());
           }
-        );
+
+          return memos[strPromise].apply(this, args || []).then(
+            function(response) {
+              if (lsEnabled) {
+                lsObj.response = arguments[0];
+                lsObj.resolver = formatCacheKey(lsTs || dateReferences[strPromise]);
+                store(lsKey, lsObj);
+              }
+              return response;
+            },
+            function(error) {
+              if (angular.isFunction(expireOnFailure) && expireOnFailure.apply(this, arguments)) {
+                memos[strPromise].forceExpiration = true;
+              }
+              return $q.reject(error);
+            }
+          );
+
+        })
       };
 
       // v0.0.7

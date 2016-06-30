@@ -5,5 +5,12 @@
   "devDependencies": {
     "angular": "~1.2.16",
     "angular-mocks": "~1.2.16"
+  },
+  "dependencies": {
+    "localforage": "~1.4.2",
+    "angular-localforage": "~1.2.5"
+  },
+  "resolutions": {
+    "localforage": "~1.4.2"
   }
 }
