@@ -54,8 +54,10 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
           ls.removeItem(key);
         },
         fetch = function(key) {
+          // console.debug('fetching...', key);
           return ls.getItem(key)
             .then(function(str) {
+              // console.debug('fetched...', key,  ' ===> ', str);
               try {
                 return JSON.parse(str);
               }
@@ -259,6 +261,55 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
       promiseCacheFunction.removeAll = function(keepInLS) {
         promiseCacheFunction.remove(Object.keys(memos), keepInLS);
+      };
+
+      // added methods
+      // extended promise cache API
+      promiseCacheFunction.getMemos = function() {
+        return memos;
+      };
+
+      // extended promise cache API
+      promiseCacheFunction.getDateReferences = function() {
+        return dateReferences;
+      };
+
+      function _getLocalStorageKeyFromNormalKey(key) {
+        if (!memos[key] || !memos[key].opts) {
+          // return null;
+          return 'promise-cache/' + key;
+        }
+
+        return getLsKey(memos[key].opts);
+      }
+
+      promiseCacheFunction.getPromiseTimestamp = function(key) {
+        return dateReferences[key];
+      }
+
+      promiseCacheFunction.getPromise = function(key) {
+        return fetch(_getLocalStorageKeyFromNormalKey(key))
+          .then(function(data) {
+            return data.response;
+          });
+      };
+
+      promiseCacheFunction.updatePromiseValue = function(key, value) {
+        var obj = {
+          resolver: formatCacheKey(dateReferences[key])
+        };
+
+        obj.response = value;
+
+        return ls
+          .setItem(_getLocalStorageKeyFromNormalKey(key), JSON.stringify(obj))
+          .then(function(response) {
+            promiseCacheFunction.remove(key, true);
+
+            return response;
+          }, function() {
+            console.error('could not update item. reason:', arguments[0]);
+          });
       };
 
       return promiseCacheFunction;
