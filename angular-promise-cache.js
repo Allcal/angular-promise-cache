@@ -288,10 +288,20 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
       }
 
       promiseCacheFunction.getPromise = function(key) {
-        return fetch(_getLocalStorageKeyFromNormalKey(key))
+        var defer = $q.defer();
+
+        fetch(_getLocalStorageKeyFromNormalKey(key))
           .then(function(data) {
-            return data.response;
+            if (!data || !data.response) {
+              defer.reject();
+            }
+            defer.resolve(data.response);
+          })
+          .catch(function() {
+            defer.reject()
           });
+
+        return defer.promise;
       };
 
       promiseCacheFunction.updatePromiseValue = function(key, value) {
