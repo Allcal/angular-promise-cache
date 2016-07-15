@@ -294,11 +294,12 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
           .then(function(data) {
             if (!data || !data.response) {
               defer.reject();
+            } else {
+              defer.resolve(data.response);
             }
-            defer.resolve(data.response);
           })
           .catch(function() {
-            defer.reject()
+            defer.reject();
           });
 
         return defer.promise;
