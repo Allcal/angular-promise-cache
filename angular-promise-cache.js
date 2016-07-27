@@ -54,21 +54,24 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
           ls.removeItem(key);
         },
         fetch = function(key) {
+          var defer = $q.defer();
           // console.debug('fetching...', key);
           return ls.getItem(key)
             .then(function(str) {
               // console.debug('fetched...', key,  ' ===> ', str);
               try {
+                defer.resolve(JSON.parse(str));
                 return JSON.parse(str);
               }
               catch (e) {
                 console.warn('Unable to parse json response from local storage', str);
-                return null;
+                defer.reject(e);
               }
             }, function() {
               console.warn('some nasty error', arguments);
-              return null;
-            })
+              defer.reject(arguments);
+            });
+            return defer.promise;
         },
 
         getTimestamp = function(key, strPromise) {
@@ -209,7 +212,18 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
               if (lsEnabled) {
                 lsObj.response = arguments[0];
                 lsObj.resolver = formatCacheKey(lsTs || dateReferences[strPromise]);
-                store(lsKey, lsObj);
+                try {
+                    return store(lsKey, lsObj)
+                        .then(function() {
+                            return response;
+                        })
+                        .catch(function() {
+                            return response;
+                        });
+                } catch(e) {
+                    console.log('error...', e);
+                    return $q.reject(e);
+                }
               }
               return response;
             },
