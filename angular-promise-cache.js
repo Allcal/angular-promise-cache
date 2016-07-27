@@ -48,27 +48,45 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
         hasOwnProperty = Object.prototype.hasOwnProperty,
         toString = Object.prototype.toString,
         store = function(key, complexValue) {
-          ls.setItem(key, JSON.stringify(complexValue));
+          var defer = $q.defer();
+          try {
+            ls.setItem(key, JSON.stringify(complexValue))
+                .then(function success() {
+                    defer.resolve();
+                })
+                .catch(function(e) {
+                    $rootScope.$broadcast('angular-promise-cache.error');
+                    defer.reject(e);
+                });
+          } catch (e) {
+            defer.reject(e);
+          }
+          return defer.promise;
         },
         remove = function(key) {
           ls.removeItem(key);
         },
         fetch = function(key) {
+            var defer = $q.defer();
           // console.debug('fetching...', key);
-          return ls.getItem(key)
+           ls.getItem(key)
             .then(function(str) {
-              // console.debug('fetched...', key,  ' ===> ', str);
+            //   console.debug('fetched...', key,  ' ===> ', str);
               try {
+                defer.resolve(JSON.parse(str));
                 return JSON.parse(str);
               }
               catch (e) {
                 console.warn('Unable to parse json response from local storage', str);
-                return null;
+                defer.reject(e);
+                // return null;
               }
             }, function() {
               console.warn('some nasty error', arguments);
-              return null;
-            })
+              defer.reject(arguments);
+            //   return null;
+          });
+          return defer.promise;
         },
 
         getTimestamp = function(key, strPromise) {
@@ -78,7 +96,7 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
           return keyDelimiter + ts + keyDelimiter;
         },
         getStrPromise = function(opts) {
-          return opts.key || opts.promise.toString().replace(whitespaceRegex, '')
+          return opts.key || opts.promise.toString().replace(whitespaceRegex, '');
         },
         isLsEnabled = function(opts) {
           return !!opts.localStorageEnabled;
@@ -209,7 +227,18 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
               if (lsEnabled) {
                 lsObj.response = arguments[0];
                 lsObj.resolver = formatCacheKey(lsTs || dateReferences[strPromise]);
-                store(lsKey, lsObj);
+                try {
+                    return store(lsKey, lsObj)
+                        .then(function() {
+                            return response;
+                        })
+                        .catch(function() {
+                            return response;
+                        });
+                } catch(e) {
+                    console.log('error...', e);
+                    return $q.reject(e);
+                }
               }
               return response;
             },
@@ -246,7 +275,6 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
         else {
           keys.push(key);
         }
-
         keys.forEach(function(key) {
           if (!memos[key]) return;
           var opts = memos[key].opts;
