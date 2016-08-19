@@ -48,7 +48,22 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
         hasOwnProperty = Object.prototype.hasOwnProperty,
         toString = Object.prototype.toString,
         store = function(key, complexValue) {
-          ls.setItem(key, JSON.stringify(complexValue));
+          var defer = $q.defer();
+
+          try {
+            ls.setItem(key, JSON.stringify(complexValue))
+                .then(function success() {
+                    defer.resolve();
+                })
+                .catch(function(e) {
+                    $rootScope.$broadcast('angular-promise-cache.error');
+                    defer.reject(e);
+                });
+          } catch (e) {
+            defer.reject(e);
+          }
+          
+          return defer.promise;
         },
         remove = function(key) {
           ls.removeItem(key);
