@@ -62,7 +62,7 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
           } catch (e) {
             defer.reject(e);
           }
-          
+
           return defer.promise;
         },
         remove = function(key) {
@@ -308,7 +308,7 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
         fetch(_getLocalStorageKeyFromNormalKey(key))
           .then(function(data) {
             if (!data || !data.resolver) {
-              defer.reject();
+              return defer.reject();
             }
 
             var timestamp = parseInt(data.resolver.replace(/\$/g, ''));
@@ -333,7 +333,7 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
         fetch(_getLocalStorageKeyFromNormalKey(key))
           .then(function(data) {
             if (!data || !data.response) {
-              defer.reject();
+              return defer.reject();
             }
             defer.resolve(data.response);
           })
@@ -351,7 +351,12 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
         return fetch(key)
           .then(function(response) {
-            dateReferences[key] = +response.resolver.replace(/\$/g, '');
+
+            if (!response) {
+              dateReferences[key] = new Date().getTime();
+            } else {
+              dateReferences[key] = +response.resolver.replace(/\$/g, '');
+            }
 
             obj.resolver = formatCacheKey(dateReferences[key]);
             obj.response = value;
