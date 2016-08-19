@@ -48,45 +48,27 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
         hasOwnProperty = Object.prototype.hasOwnProperty,
         toString = Object.prototype.toString,
         store = function(key, complexValue) {
-          var defer = $q.defer();
-          try {
-            ls.setItem(key, JSON.stringify(complexValue))
-                .then(function success() {
-                    defer.resolve();
-                })
-                .catch(function(e) {
-                    $rootScope.$broadcast('angular-promise-cache.error');
-                    defer.reject(e);
-                });
-          } catch (e) {
-            defer.reject(e);
-          }
-          return defer.promise;
+          ls.setItem(key, JSON.stringify(complexValue));
         },
         remove = function(key) {
           ls.removeItem(key);
         },
         fetch = function(key) {
-          var defer = $q.defer();
           // console.debug('fetching...', key);
-          ls.getItem(key)
+          return ls.getItem(key)
             .then(function(str) {
-            //   console.debug('fetched...', key,  ' ===> ', str);
+              // console.debug('fetched...', key,  ' ===> ', str);
               try {
-                defer.resolve(JSON.parse(str));
                 return JSON.parse(str);
               }
               catch (e) {
                 console.warn('Unable to parse json response from local storage', str);
-                defer.reject(e);
-                // return null;
+                return null;
               }
             }, function() {
               console.warn('some nasty error', arguments);
-              defer.reject(arguments);
-            //   return null;
-          });
-          return defer.promise;
+              return null;
+            })
         },
 
         getTimestamp = function(key, strPromise) {
@@ -227,18 +209,7 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
               if (lsEnabled) {
                 lsObj.response = arguments[0];
                 lsObj.resolver = formatCacheKey(lsTs || dateReferences[strPromise]);
-                try {
-                    return store(lsKey, lsObj)
-                        .then(function() {
-                            return response;
-                        })
-                        .catch(function() {
-                            return response;
-                        });
-                } catch(e) {
-                    console.log('error...', e);
-                    return $q.reject(e);
-                }
+                store(lsKey, lsObj);
               }
               return response;
             },
@@ -312,8 +283,33 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
         return getLsKey(memos[key].opts);
       }
 
+      // promiseCacheFunction.getPromiseTimestamp = function(key) {
+      //   return dateReferences[key];
+      // }
+
       promiseCacheFunction.getPromiseTimestamp = function(key) {
-        return dateReferences[key];
+         var defer = $q.defer();
+
+        fetch(_getLocalStorageKeyFromNormalKey(key))
+          .then(function(data) {
+            if (!data || !data.resolver) {
+              defer.reject();
+            }
+
+            var timestamp = parseInt(data.resolver.replace(/\$/g, ''));
+
+            defer.resolve(timestamp);
+          })
+          .catch(function() {
+            defer.reject()
+          });
+
+        return defer.promise;
+
+        return promiseCacheFunction.getPromise(key)
+          .then(function(resonse) {
+            return +response.resolver.replace(/\$/g, '');
+          });
       }
 
       promiseCacheFunction.getPromise = function(key) {
@@ -323,35 +319,42 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
           .then(function(data) {
             if (!data || !data.response) {
               defer.reject();
-            } else {
-              defer.resolve(data.response);
             }
+            defer.resolve(data.response);
           })
           .catch(function() {
-            defer.reject();
+            defer.reject()
           });
 
         return defer.promise;
       };
 
       promiseCacheFunction.updatePromiseValue = function(key, value) {
-        var obj = {
-          resolver: formatCacheKey(dateReferences[key])
-        };
+        var localKey = _getLocalStorageKeyFromNormalKey(key);
 
-        obj.response = value;
+        var obj = {};
 
-        return ls
-          .setItem(_getLocalStorageKeyFromNormalKey(key), JSON.stringify(obj))
+        return fetch(key)
           .then(function(response) {
-            promiseCacheFunction.remove(key, true);
+            dateReferences[key] = +response.resolver.replace(/\$/g, '');
 
-            return response;
-          }, function() {
-            console.error('could not update item. reason:', arguments[0]);
-          });
+            obj.resolver = formatCacheKey(dateReferences[key]);
+            obj.response = value;
+
+            return ls
+              .setItem(localKey, JSON.stringify(obj))
+              .then(function(response) {
+                promiseCacheFunction.remove(key, true);
+
+                return response;
+              }, function() {
+                console.error('could not update item. reason:', arguments[0]);
+              });
+        });
+
       };
 
+      window.promiseCache = promiseCacheFunction;
       return promiseCacheFunction;
     }]);
 
