@@ -51,7 +51,8 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
           var defer = $q.defer();
 
           try {
-            ls.setItem(key, JSON.stringify(complexValue))
+            // ls.setItem(key, JSON.stringify(complexValue))
+            ls.setItem(key, complexValue)
                 .then(function success() {
                     defer.resolve();
                 })
@@ -74,7 +75,8 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
             .then(function(str) {
               // console.debug('fetched...', key,  ' ===> ', str);
               try {
-                return JSON.parse(str);
+                return str;
+                // return JSON.parse(str);
               }
               catch (e) {
                 console.warn('Unable to parse json response from local storage', str);
@@ -362,7 +364,8 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
             obj.response = value;
 
             return ls
-              .setItem(localKey, JSON.stringify(obj))
+              // .setItem(localKey, JSON.stringify(obj))
+              .setItem(localKey, obj)
               .then(function(response) {
                 promiseCacheFunction.remove(key, true);
 
