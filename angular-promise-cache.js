@@ -51,8 +51,7 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
           var defer = $q.defer();
 
           try {
-            // ls.setItem(key, JSON.stringify(complexValue))
-            ls.setItem(key, complexValue)
+            ls.setItem(key, JSON.stringify(complexValue))
                 .then(function success() {
                     defer.resolve();
                 })
@@ -75,8 +74,7 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
             .then(function(str) {
               // console.debug('fetched...', key,  ' ===> ', str);
               try {
-                return str;
-                // return JSON.parse(str);
+                return JSON.parse(str);
               }
               catch (e) {
                 console.warn('Unable to parse json response from local storage', str);
